@@ -1,0 +1,96 @@
+{
+  "_comment" : "Create a custom AWS AMI image",
+  "variables": {
+    "aws_access_key": "",
+    "aws_secret_key": "",
+    "region": "",
+    "source_ami":"",
+    "instance_type":"",
+    "vpc_id": "",
+    "subnet_id": ""
+  },
+  "_comment1" : "packer build -var \"aws_secret_key=foo\" packer.json",
+  "_comment2" : "packer build -var-file packer-vars.json packer.json",
+  "builders": [{
+    "access_key": "{{user `aws_access_key`}}",
+    "secret_key": "{{user `aws_secret_key`}}",
+    "type": "amazon-ebs",
+    "region": "{{user `region`}}",
+    "source_ami": "{{user `source_ami`}}",
+    "instance_type": "{{user `instance_type`}}",
+    "ssh_username": "ubuntu",
+    "ami_name": "Bala-Build-{{isotime | clean_resource_name}}",
+    "vpc_id": "{{user `vpc_id`}}",
+    "subnet_id": "{{user `subnet_id`}}",
+    "tags": {
+      "Name": "Bala-Build-{{isotime | clean_resource_name}}"
+    }
+  }],
+  "provisioners": [
+    {
+      "type": "shell",
+      "inline": [
+        "sleep 30",
+        "sudo apt update -y",
+        "sudo apt install nginx -y",
+        "sudo service nginx start",
+        "sudo systemctl enable nginx",
+        "sudo apt install -y git unzip curl wget jq telnet net-tools openjdk-11-jdk",
+        "sudo curl https://get.docker.com | bash",
+
+        "sudo curl \"https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip\" -o \"awscliv2.zip\"",
+        "unzip awscliv2.zip",
+        "sudo ./aws/install",
+
+        "TERRAFORM_VERSION=1.6.6",
+        "sudo curl -O https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip",
+        "unzip terraform_${TERRAFORM_VERSION}_linux_amd64.zip",
+        "sudo mv terraform /usr/local/bin/",
+
+        "sudo apt-add-repository --yes --update ppa:ansible/ansible",
+        "sudo apt install -y ansible",
+
+        "sudo apt clean"
+      ]
+    },
+    {
+      "type": "file",
+      "source": "docker.service",
+      "destination": "/tmp/docker.service"
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "sudo cp /tmp/docker.service /lib/systemd/system/docker.service",
+        "sudo usermod -a -G docker ubuntu",
+        "sudo systemctl daemon-reload",
+        "sudo service docker restart",
+        "sudo systemctl status docker"
+      ]
+
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "sudo useradd --no-create-home --shell /bin/false node_exporter",
+        "wget https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz",
+        "tar xvf node_exporter-1.3.1.linux-amd64.tar.gz",
+        "sudo cp node_exporter-1.3.1.linux-amd64/node_exporter /usr/local/bin/",
+        "sudo chown node_exporter:node_exporter /usr/local/bin/node_exporter"
+      ]
+    },
+    {
+      "type": "file",
+      "source": "node_exporter.service",
+      "destination": "/tmp/node_exporter.service"
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "sudo cp /tmp/node_exporter.service /etc/systemd/system/node_exporter.service",
+        "sudo systemctl enable node_exporter",
+        "rm -rf node_exporter*"
+      ]
+    }
+  ]
+}
